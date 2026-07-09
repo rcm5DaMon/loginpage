@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Power BI Portal</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: Arial, sans-serif; }
+    body, html { height: 100%; width: 100%; background-color: #f4f6f8; }
+
+    /* Login Form Styling */
+    .login-container { display: flex; justify-content: center; align-items: center; height: 100vh; }
+    .card { background: white; padding: 40px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
+    .card h2 { margin-bottom: 20px; color: #333; }
+    .card input { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+    .card button { width: 100%; padding: 12px; background-color: #0078d4; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 14px; }
+    .card button:disabled { background-color: #a6a6a6; }
+    .error { color: #d93025; font-size: 14px; margin-bottom: 15px; display: none; }
+
+    /* Dashboard View Styling */
+    #dashboard-view { display: none; height: 100vh; flex-direction: column; }
+    header { background: #0078d4; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
+    header h3 { font-size: 18px; font-weight: 600; }
+    header button { padding: 6px 14px; background: white; color: #0078d4; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+    iframe { width: 100%; height: calc(100vh - 60px); border: none; }
+  </style>
+</head>
+<body>
+
+  <div id="login-view" class="login-container">
+    <div class="card">
+      <h2>Portal Access</h2>
+      <div id="error-msg" class="error"></div>
+      <input type="email" id="email-input" placeholder="Enter your email" required />
+      <button id="login-btn" onclick="handleLogin()">Login</button>
+    </div>
+  </div>
+
+  <div id="dashboard-view">
+    <header>
+      <h3 id="welcome-msg">Welcome</h3>
+      <button onclick="logout()">Logout</button>
+    </header>
+    <iframe id="powerbi-frame" src=""></iframe>
+  </div>
+
+  <script>
+    // --- ENDPOINT CONFIGURATIONS ---
+    // 1. SheetDB API for User Whitelist Sheet (Column A: name, Column B: user_name)
+    const USERS_API_URL = "https://sheetdb.io/api/v1/2f82rdd589rj5";
+
+    // 2. SheetDB API for Recording Login Logs (Column A: email, Column B: timestamp)
+    const LOGS_API_URL = "https://sheetdb.io/api/v1/baynyn8i2eka0";
+
+    // 3. Target Power BI Public URL
+    const POWER_BI_URL = "https://app.powerbi.com/view?r=eyJrIjoiZTlkNWVjNTctOGY1Yy00NTFhLWEzYjktOGYwNGRhZGM3ZmI5IiwidCI6IjU3OGRiYWRkLWMzMmMtNGY1YS04YzQ0LTMzZGE0NGM3MTIwOSIsImMiOjEwfQ%3D%3D";
+
+    const INACTIVITY_LIMIT_MS = 15 * 60 * 1000; // 15 minutes
+    let inactivityTimer;
+
+    async function handleLogin() {
+      const inputEmail = document.getElementById('email-input').value.trim().toLowerCase();
+      const errorDiv = document.getElementById('error-msg');
+      const loginBtn = document.getElementById('login-btn');
+
+      if (!inputEmail) {
+        showError("Please enter a valid email address.");
+        return;
+      }
+
+      loginBtn.disabled = true;
+      loginBtn.innerText = "Verifying...";
+      errorDiv.style.display = "none";
+
+      try {
+        // Fetch user data directly from SheetDB
+        const response = await fetch(USERS_API_URL);
+        const users = await response.json();
+
+        // Search for matching email in the 'name' column
+        const foundUser = users.find(u => u.name && u.name.trim().toLowerCase() === inputEmail);
+
+        if (foundUser) {
+          const userName = foundUser.user_name || "User";
+
+          // Record login log via SheetDB POST
+          recordLoginLog(inputEmail);
+
+          // Update UI & load Power BI dashboard
+          document.getElementById('welcome-msg').innerText = `Welcome, ${userName}!`;
+          document.getElementById('powerbi-frame').src = POWER_BI_URL;
+          
+          document.getElementById('login-view').style.display = 'none';
+          document.getElementById('dashboard-view').style.display = 'flex';
+
+          // Start 15-minute inactivity tracker
+          startInactivityTracker();
+        } else {
+          showError("Access Denied: Email not listed.");
+        }
+      } catch (err) {
+        showError("Unable to verify credentials. Please try again later.");
+      } finally {
+        loginBtn.disabled = false;
+        loginBtn.innerText = "Login";
+      }
+    }
+
+    // Append new log row to the record sheet
+    function recordLoginLog(email) {
+      fetch(LOGS_API_URL, {
+        method: "POST",
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          data: [
+            {
+              email: email,
+              timestamp: new Date().toLocaleString()
+            }
+          ]
+        })
+      });
+    }
+
+    function showError(msg) {
+      const errorDiv = document.getElementById('error-msg');
+      errorDiv.innerText = msg;
+      errorDiv.style.display = "block";
+    }
+
+    // --- 15-MINUTE INACTIVITY TRACKER ---
+    function resetInactivityTimer() {
+      clearTimeout(inactivityTimer);
+      inactivityTimer = setTimeout(() => {
+        alert("Logged out due to 15 minutes of inactivity.");
+        logout();
+      }, INACTIVITY_LIMIT_MS);
+    }
+
+    function startInactivityTracker() {
+      const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
+      events.forEach(event => window.addEventListener(event, resetInactivityTimer, true));
+      resetInactivityTimer();
+    }
+
+    function logout() {
+      clearTimeout(inactivityTimer);
+      document.getElementById('powerbi-frame').src = "";
+      document.getElementById('email-input').value = "";
+      document.getElementById('dashboard-view').style.display = 'none';
+      document.getElementById('login-view').style.display = 'flex';
+    }
+  </script>
+</body>
+</html>
