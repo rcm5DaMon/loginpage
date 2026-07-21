@@ -113,13 +113,14 @@
 
     .dashboard-header {
       min-height: 60px;
-      padding: 14px 20px;
+      padding: 12px 20px;
       color: #ffffff;
       background-color: #0078d4;
       display: flex;
       justify-content: space-between;
       align-items: center;
       gap: 15px;
+      flex-wrap: wrap;
     }
 
     .dashboard-header h3 {
@@ -128,6 +129,37 @@
       font-weight: 600;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+
+    .header-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .dashboard-selector-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    .dashboard-selector {
+      padding: 8px 12px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #333333;
+      background-color: #ffffff;
+      border: 1px solid #cccccc;
+      border-radius: 5px;
+      outline: none;
+      cursor: pointer;
+    }
+
+    .dashboard-selector:focus {
+      border-color: #004578;
+      box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.4);
     }
 
     .dashboard-header button {
@@ -153,17 +185,31 @@
       background-color: #ffffff;
     }
 
-    @media (max-width: 500px) {
+    @media (max-width: 600px) {
       .login-card {
         padding: 28px 22px;
+      }
+
+      .dashboard-header {
+        padding: 10px 15px;
       }
 
       .dashboard-header h3 {
         font-size: 15px;
       }
 
+      .dashboard-selector-wrapper span {
+        display: none; /* Hide 'Dashboard:' label on small screens */
+      }
+
+      .dashboard-selector {
+        padding: 6px 10px;
+        font-size: 13px;
+      }
+
       .dashboard-header button {
-        padding: 7px 12px;
+        padding: 6px 10px;
+        font-size: 13px;
       }
     }
   </style>
@@ -203,9 +249,18 @@
     <header class="dashboard-header">
       <h3 id="welcome-message">Welcome</h3>
 
-      <button type="button" id="logout-button">
-        Logout
-      </button>
+      <div class="header-controls">
+        <div class="dashboard-selector-wrapper">
+          <span>Dashboard:</span>
+          <select id="dashboard-select" class="dashboard-selector">
+            <!-- Options populated dynamically from DASHBOARDS array -->
+          </select>
+        </div>
+
+        <button type="button" id="logout-button">
+          Logout
+        </button>
+      </div>
     </header>
 
     <iframe
@@ -238,8 +293,24 @@
     // Google Form submission endpoint.
     const LOGIN_FORM_URL = "https://docs.google.com/forms/d/e/" + LOGIN_FORM_ID + "/formResponse";
 
-    // Power BI public report.
-    const POWER_BI_URL = "https://app.powerbi.com/view?r=eyJrIjoiNWQxMjI1NmYtYTUyMi00ZGVhLWFlNDItMDk2MjNhNGE5NDVmIiwidCI6IjU3OGRiYWRkLWMzMmMtNGY1YS04YzQ0LTMzZGE0NGM3MTIwOSIsImMiOjEwfQ%3D%3D";
+    // List of available Power BI reports. Add or modify reports here.
+    const DASHBOARDS = [
+      {
+        id: "sales-overview",
+        name: "Sales Overview",
+        url: "https://app.powerbi.com/view?r=eyJrIjoiNWQxMjI1NmYtYTUyMi00ZGVhLWFlNDItMDk2MjNhNGE5NDVmIiwidCI6IjU3OGRiYWRkLWMzMmMtNGY1YS04YzQ0LTMzZGE0NGM3MTIwOSIsImMiOjEwfQ%3D%3D"
+      },
+      {
+        id: "financial-report",
+        name: "Financial Summary",
+        url: "https://app.powerbi.com/view?r=YOUR_SECOND_REPORT_URL_HERE"
+      },
+      {
+        id: "operations",
+        name: "Operations & HR",
+        url: "https://app.powerbi.com/view?r=YOUR_THIRD_REPORT_URL_HERE"
+      }
+    ];
 
     /*
     ============================================================
@@ -264,6 +335,26 @@
     const errorMessage = document.getElementById("error-message");
     const welcomeMessage = document.getElementById("welcome-message");
     const powerBIFrame = document.getElementById("powerbi-frame");
+    const dashboardSelect = document.getElementById("dashboard-select");
+
+    /*
+    ============================================================
+    INITIALIZATION
+    ============================================================
+    */
+
+    function initDashboardMenu() {
+      dashboardSelect.innerHTML = "";
+      DASHBOARDS.forEach((dashboard) => {
+        const option = document.createElement("option");
+        option.value = dashboard.url;
+        option.textContent = dashboard.name;
+        dashboardSelect.appendChild(option);
+      });
+    }
+
+    // Populate dropdown menu options on load
+    initDashboardMenu();
 
     /*
     ============================================================
@@ -432,10 +523,27 @@
       isLoggedIn = true;
 
       welcomeMessage.textContent = "Welcome, " + (user.userName || "User") + "!";
-      powerBIFrame.src = POWER_BI_URL;
+      
+      // Load the currently selected option from the dropdown (or first by default)
+      if (DASHBOARDS.length > 0) {
+        powerBIFrame.src = dashboardSelect.value || DASHBOARDS[0].url;
+      }
 
       loginView.style.display = "none";
       dashboardView.style.display = "flex";
+    }
+
+    /*
+    ============================================================
+    SWITCH DASHBOARD
+    ============================================================
+    */
+
+    function handleDashboardChange(event) {
+      const selectedUrl = event.target.value;
+      if (selectedUrl) {
+        powerBIFrame.src = selectedUrl;
+      }
     }
 
     /*
@@ -483,6 +591,11 @@
       emailInput.value = "";
       emailInput.disabled = false;
 
+      // Reset dropdown selection to first item
+      if (dashboardSelect.options.length > 0) {
+        dashboardSelect.selectedIndex = 0;
+      }
+
       hideError();
       emailInput.focus();
     }
@@ -495,6 +608,7 @@
 
     loginForm.addEventListener("submit", handleLogin);
     logoutButton.addEventListener("click", logout);
+    dashboardSelect.addEventListener("change", handleDashboardChange);
   </script>
 </body>
 </html>
